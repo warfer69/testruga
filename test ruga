@@ -1,0 +1,68 @@
+pragma solidity ^0.8.19;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract TestRugaDeezNuts is ERC20, Ownable {
+    uint256 private _totalSupply = 420000000000000 * 10**18;
+
+    uint256 public buyTax = 69; // 0.69%
+    uint256 public sellTax = 169; // 1.69%
+    uint256 private constant TAX_DENOMINATOR = 10000;
+
+    mapping(address => bool) private _isExcludedFromTax;
+
+    event TaxUpdated(uint256 buyTax, uint256 sellTax);
+
+    constructor() ERC20("test ruga deez nuts", "$tRUGA") {
+        _mint(msg.sender, _totalSupply);
+    }
+
+    function transfer(address recipient, uint256 amount) public override returns (bool) {
+        uint256 taxAmount = amount * buyTax / TAX_DENOMINATOR;
+        uint256 amountAfterTax = amount - taxAmount;
+        _transfer(_msgSender(), recipient, amountAfterTax);
+        _burn(_msgSender(), taxAmount);
+        return true;
+    }
+
+    function transferFrom(address sender, address recipient, uint256 amount) public override returns (bool) {
+        uint256 taxAmount = amount * sellTax / TAX_DENOMINATOR;
+        uint256 amountAfterTax = amount - taxAmount;
+        _transfer(sender, recipient, amountAfterTax);
+        _burn(sender, taxAmount);
+        _approve(sender, _msgSender(), allowance(sender, _msgSender()) - amount);
+        return true;
+    }
+
+    function setTax(uint256 newBuyTax, uint256 newSellTax) external onlyOwner {
+        require(newBuyTax <= TAX_DENOMINATOR, "Buy tax too high");
+        require(newSellTax <= TAX_DENOMINATOR, "Sell tax too high");
+        buyTax = newBuyTax;
+        sellTax = newSellTax;
+        emit TaxUpdated(newBuyTax, newSellTax);
+    }
+
+    function excludeFromTax(address account) external onlyOwner {
+        _isExcludedFromTax[account] = true;
+    }
+
+    function includeInTax(address account) external onlyOwner {
+        _isExcludedFromTax[account] = false;
+    }
+
+    function isExcludedFromTax(address account) public view returns (bool) {
+        return _isExcludedFromTax[account];
+    }
+
+    function _transfer(address sender, address recipient, uint256 amount) internal override {
+        if (_isExcludedFromTax[sender] || _isExcludedFromTax[recipient]) {
+            super._transfer(sender, recipient, amount);
+        } else {
+            uint256 taxAmount = recipient == owner() ? amount * buyTax / TAX_DENOMINATOR : amount * sellTax / TAX_DENOMINATOR;
+            uint256 amountAfterTax = amount - taxAmount;
+            super._transfer(sender, recipient, amountAfterTax);
+            _burn(sender, taxAmount);
+        }
+    }
+}
